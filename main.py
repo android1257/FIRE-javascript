@@ -20,8 +20,9 @@ import Trace
 import config
 
 logger.remove()
-logger.add(lambda msg: tqdm.write(msg, end=""), colorize=True, level="INFO")
-
+# logger.add(lambda msg: tqdm.write(msg, end=""), colorize=True, level="INFO")
+logger.add(lambda msg: tqdm.write(msg, end=""), colorize=True, level="DEBUG")
+logger.add("output.log", level="DEBUG", colorize=False, encoding="utf-8", mode="w")
 
 def progress_bar_process(total_cnt, pbar_queue, output_name="detect_info.json"):
     def get_time(info):

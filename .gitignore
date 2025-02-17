@@ -4,3 +4,9 @@ result
 venv
 workspace
 Trace/v1/oldnew
+__pycache__
+resource
+processed
+async
+Test
+*.log

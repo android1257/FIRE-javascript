@@ -13,7 +13,8 @@ def isphor(s, liter):
 
 def doubisphor(forward, back):
     double = (
-    '->', '--', '-=', '+=', '++', '>=', '<=', '==', '!=', '*=', '/=', '%=', '/=', '&=', '^=', '||', '&&', '>>', '<<')
+    '--', '-=', '+=', '++', '>=', '==', '!=', '*=', '/=', '%=', '/=', '&=', '^=', '||', '&&', '>>', '<<',
+    '=>', '.=', '**', "??", "?:")
     string = forward + back
 
     if string in double:
@@ -23,10 +24,10 @@ def doubisphor(forward, back):
 
 
 def trisphor(s, t):
-    if (s == '>>') | (s == '<<') and (t == '='):
+    op = s + t
+    if op in (">>=", "<<=", "===", "??=", "!==", "**=", "&&=", "||=", ">>>"):
         return True
-    else:
-        return False
+    return False
 
 
 def create_tokens(sentence):

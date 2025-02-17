@@ -20,7 +20,7 @@ class ProjectDataset(Dataset.base.BaseDataset):
         logger.info("Preprocessing Target Function Dataset")
         logger.info(f"Extracting function from {project_dir} to {self.cache_dir}")
 
-        cmd = (f'{self.path_to_ctags} -R --kinds-C++=f -u --fields=-fP+ne --language-force=c --language-force=c++'
+        cmd = (f'{self.path_to_ctags} -R --kinds-JavaScript=f -u --fields=-fP+ne --language-force=JavaScript'
                f' --output-format=json -f - "{project_dir}"')
         logger.debug(f"{cmd}")
         all_function_list_str = subprocess.check_output(cmd, stderr=subprocess.STDOUT, shell=True).decode(
@@ -31,7 +31,9 @@ class ProjectDataset(Dataset.base.BaseDataset):
         all_function_list = all_function_list_str.split("\n")
         self.total_functions = len(all_function_list)  # All function including those < 3 lines
         for line in all_function_list:
-            if line == "":
+            if not line.strip(): 
+                continue
+            if line.startswith("ctags: Notice: "): # ctags warning
                 continue
             try:
                 info = json.loads(line)
@@ -40,7 +42,7 @@ class ProjectDataset(Dataset.base.BaseDataset):
                 continue
             if info["path"] != current_file:
                 ext = os.path.splitext(info["path"])[1].lower()
-                if ext not in [".c", ".cc", ".cxx", ".cpp", ".c++", "cp", ".h", ".hh", "hp", ".hpp", ".hxx", ".h++"]:
+                if ext not in [".js", ".cjs", ".mjs", ".jsx"]:
                     continue
                 try:
                     with open(info["path"]) as f:
@@ -51,32 +53,22 @@ class ProjectDataset(Dataset.base.BaseDataset):
                     continue
             # Get Function Range
             start_line = info["line"] - 1
-            if "end" not in info:
-                continue
-            end_line = info["end"]
+            # Find the end line of the function
+            func_body, end_line = Dataset.utils.get_function_body(current_code, start_line)
 
+            if end_line >= len(current_code):
+                logger.warning(f"Function end not found in {info['path']}")
+                continue
             # Reconstruct function declaration since sometimes they are something missing
+            func_lines = func_body.split("\n")
             try:
-                if "typeref" in info:
-                    func_type_parts = info["typeref"].split(":")
-                    if len(func_type_parts) > 1:
-                        if func_type_parts[0] == "typename":
-                            func_type = ":".join(func_type_parts[1:])
-                        else:
-                            func_type = func_type_parts[0] + " " + ":".join(func_type_parts[1:])
-                    else:
-                        func_type = func_type_parts[0]
-                    if func_type[-1] not in ["*", "&"]:
-                        func_type += " "
-                else:
-                    func_type = ""
-                func_decl_parts = current_code[start_line].split(info["name"], 1)
-                if len(func_decl_parts) >= 2:
-                    current_code[start_line] = f"{func_type}{info['name']}{func_decl_parts[1]}"
+                first_line = func_lines[0]
+                func_bracket_pos = first_line.find("(")
+                func_lines[0] = f"function {info['name']}{first_line[func_bracket_pos:]}"
                 # Or we'll give up Reconstructing Declaration
             except Exception as e:
                 logger.warning("Function Declaration Parse Error: {}".format(e))
-            func_body = "\n".join(current_code[start_line:end_line])
+            func_body = "\n".join(func_lines)
             # function_body purification
             func_body = Dataset.utils.function_purification(func_body, self.skip_loc_threshold)
             if func_body == "":

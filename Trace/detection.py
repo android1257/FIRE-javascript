@@ -88,7 +88,8 @@ def detect_vulnerable_with_initialize(
 
             vuln_name = os.path.basename(vuln_file)
             cve_id = vuln_name.split("_")[0]
-            
+
+            logger.debug(f"process {vuln_file}")
 
             if (
                 not s.is_error_func(vuln_name)

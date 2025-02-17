@@ -10,11 +10,11 @@ from pygments.token import Token
 
 
 class OperatorStateMachine:
-    _Operators = frozenset(['++', '--', '+', '-', '*', '/', '%', '=', '+=', '-=', '*=', '/=', '%=', '<<=',
-                            '>>=', '&=', '^=', '|=', '&&', '||', '!', '==', '!=', '>=', '<=', '>', '<', '&',
-                            '|', '<<', '>>', '~', '^', '->'])  # 42
-    _double_operator = frozenset(["&", "+", "-", "|"])
-    _double_operator2 = frozenset(["<", ">"])
+    _Operators = frozenset(['++', '--', '+', '-', '*', '/', '%', '=', '+=', '-=', '*=', '/=', '%=', '<<=','>>=', '&=', '^=', 
+                            '|=', '&&', '||', '!', '==', '!=', '>=', '<=', '>', '<', '&', '|', '<<', '>>', '~', '^', 
+                            "===", "!==", "??=", "**", "=>", "??", "?:", "**=", "&&=", "||=", ">>>"])  # 42
+    _double_operator = frozenset(["+", "-"])
+    _double_operator2 = frozenset(["<", ">", "?", "*", "&", "|"])
 
     def __init__(self):
         self.current_state = ""
@@ -36,10 +36,14 @@ class OperatorStateMachine:
         elif len(self.current_state) == 1:
             op = self.current_state + current
             if current == "=":
+                if self.current_state in ("=", "!"):
+                    self.current_state = op # === , <=>
+                    return None
                 self.current_state = ""
                 return op
+                
             elif current == self.current_state:
-                if current in self._double_operator:  # && ++ -- ||
+                if current in self._double_operator:  # ++ -- 
                     self.current_state = ""
                     return op
                 if current in self._double_operator2:  # << >> may go to <<= and >>=
@@ -49,16 +53,19 @@ class OperatorStateMachine:
                     op = self.current_state
                     self.current_state = current
                     return op
-            elif op == "->":
+            elif op in ("=>"):
                 self.current_state = ""
-                return "->"
+                return op
             else:
                 op = self.current_state
                 self.current_state = current
                 return op
         else:
             op = self.current_state + current
-            if current == "=":  # only <<= and >>=
+            if current == "=":   # only <<= , >>= , ===, ??= and !==
+                self.current_state = ""
+                return op
+            elif current == ">": # only >>>
                 self.current_state = ""
                 return op
             else:
@@ -69,31 +76,70 @@ class OperatorStateMachine:
 
 
 class FeatureExtractor:
-    _APIs = ['alloc', 'free', 'mem', 'copy', 'new', 'open', 'close', 'delete', 'create', 'release',
-             'sizeof', 'remove', 'clear', 'dequene', 'enquene', 'detach', 'Attach', 'str', 'string',
-             'lock', 'mutex', 'spin', 'init', 'register', 'disable', 'enable', 'put', 'get', 'up',
-             'down', 'inc', 'dec', 'add', 'sub', 'set', 'map', 'stop', 'start', 'prepare', 'suspend',
-             'resume', 'connect']  # 42
+    # _APIs = ['alloc', 'free', 'mem', 'copy', 'new', 'open', 'close', 'delete', 'create', 'release',
+    #          'sizeof', 'remove', 'clear', 'dequene', 'enquene', 'detach', 'Attach', 'str', 'string',
+    #          'lock', 'mutex', 'spin', 'init', 'register', 'disable', 'enable', 'put', 'get', 'up',
+    #          'down', 'inc', 'dec', 'add', 'sub', 'set', 'map', 'stop', 'start', 'prepare', 'suspend',
+    #          'resume', 'connect']  # 42
+    _APIs = [
+        'document', 'getElementById', 'getElementsByClassName', 'getElementsByTagName', 'querySelector', 'querySelectorAll',
+        'createElement', 'appendChild', 'removeChild', 'replaceChild', 'setAttribute', 'getAttribute', 'removeAttribute',
+        'addEventListener', 'removeEventListener', 'dispatchEvent', 'Event', 'CustomEvent', 'preventDefault', 'stopPropagation',
+        'setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'Promise', 'async', 'await', 'fetch', 'XMLHttpRequest',
+        'console.log', 'console.error', 'console.warn', 'console.debug', 'console.table', 'debugger',
+        'try', 'catch', 'finally', 'throw', 'Error', 'TypeError', 'RangeError', 'SyntaxError',
+        'localStorage', 'sessionStorage', 'setItem', 'getItem', 'removeItem', 'clear',
+        'fetch', 'XMLHttpRequest', 'JSON.parse', 'JSON.stringify', 'encodeURIComponent', 'decodeURIComponent', 'encodeURI', 'decodeURI',
+        'eval', 'isNaN', 'isFinite', 'parseInt', 'parseFloat', 'typeof', 'instanceof',
+        'innerHTML', 'textContent', 'className', 'style', 'value', 'checked', 'disabled',                   
+        'window', 'document', 'navigator', 'location', 'history', 'screen', 'alert', 'confirm', 'prompt',
+        'setTimeout', 'setInterval', 'clearTimeout', 'clearInterval',
+        'fetch', 'XMLHttpRequest', 'send', 'open', 'abort',
+        'File', 'FileReader', 'Blob', 'URL.createObjectURL', 'URL.revokeObjectURL',
+        'requestAnimationFrame', 'cancelAnimationFrame', 'CanvasRenderingContext2D', 'CanvasGradient', 'Image',
+        'fetch', 'WebSocket', 'ServiceWorker', 'BroadcastChannel', 'Cache', 'Storage', 'Notification', 'Clipboard']
+    # _Formatted_strings = ['d', 'i', 'o', 'u', 'x', 'X', 'f', 'F', 'e', 'E', 'g', 'G',
+    #                       'a', 'A', 'c', 'C', 's', 'S', 'p', 'n']  # 21
+    _Formatted_strings = ['b', 'c', 'd', "i", 'e', 'f', 'F', 'g', 'o', 's', 't', "T", "v", 'x', 'X', "j"]
 
-    _Formatted_strings = ['d', 'i', 'o', 'u', 'x', 'X', 'f', 'F', 'e', 'E', 'g', 'G',
-                          'a', 'A', 'c', 'C', 's', 'S', 'p', 'n']  # 21
-
-    _Operators = ['bitand', 'bitor', 'xor', 'not', 'not_eq', 'or', 'or_eq', 'and', '++', '--',
-                  '+', '-', '*', '/', '%', '=', '+=', '-=', '*=', '/=', '%=', '<<=',
-                  '>>=', '&=', '^=', '|=', '&&', '||', '!', '==', '!=', '>=', '<=', '>', '<', '&',
-                  '|', '<<', '>>', '~', '^', '->']  # 42
-
-    _Keywords = ['asm', 'auto', 'alignas', 'alignof', 'bool', 'break', 'case',
-                 'catch', 'char', 'char16_t', 'char32_t', 'class', 'const', 'const_cast',
-                 'constexpr', 'continue', 'decltype', 'default', 'do', 'double',
-                 'dynamic_cast', 'else', 'enum', 'explicit', 'export', 'extern', 'false', 'float',
-                 'for', 'friend', 'goto', 'if', 'inline', 'int', 'long', 'mutable', 'namespace',
-                 'noexcept', 'nullptr', 'operator', 'private', 'protected', 'public',
-                 'reinterpret_cast', 'return', 'short', 'signed', 'static',
-                 'static_assert', 'static_cast', 'struct', 'switch', 'template', 'this',
-                 'thread_local', 'throw', 'true', 'try', 'typedef', 'typeid', 'typename', 'union',
-                 'unsigned', 'using', 'virtual', 'void', 'volatile', 'wchar_t', 'while', 'compl',
-                 'override', 'final', 'assert']  # 77
+    # _Operators = ['bitand', 'bitor', 'xor', 'not', 'not_eq', 'or', 'or_eq', 'and', '++', '--',
+    #               '+', '-', '*', '/', '%', '=', '+=', '-=', '*=', '/=', '%=', '<<=',
+    #               '>>=', '&=', '^=', '|=', '&&', '||', '!', '==', '!=', '>=', '<=', '>', '<', '&',
+    #               '|', '<<', '>>', '~', '^', '->']  # 42
+    _Operators = ['++', '--', '+', '-', '*', '/', '%', '=', '+=', '-=', '*=', '/=', '%=', '<<=','>>=', '&=', '^=', 
+                  '|=', '&&', '||', '!', '==', '!=', '>=', '<=', '>', '<', '&', '|', '<<', '>>', '~', '^', 
+                  "===", "!==", "??=", "**", "=>", "??", "?:", "**=", "&&=", "||=", ">>>"]
+    # _Keywords = ['asm', 'auto', 'alignas', 'alignof', 'bool', 'break', 'case',
+    #              'catch', 'char', 'char16_t', 'char32_t', 'class', 'const', 'const_cast',
+    #              'constexpr', 'continue', 'decltype', 'default', 'do', 'double',
+    #              'dynamic_cast', 'else', 'enum', 'explicit', 'export', 'extern', 'false', 'float',
+    #              'for', 'friend', 'goto', 'if', 'inline', 'int', 'long', 'mutable', 'namespace',
+    #              'noexcept', 'nullptr', 'operator', 'private', 'protected', 'public',
+    #              'reinterpret_cast', 'return', 'short', 'signed', 'static',
+    #              'static_assert', 'static_cast', 'struct', 'switch', 'template', 'this',
+    #              'thread_local', 'throw', 'true', 'try', 'typedef', 'typeid', 'typename', 'union',
+    #              'unsigned', 'using', 'virtual', 'void', 'volatile', 'wchar_t', 'while', 'compl',
+    #              'override', 'final', 'assert']  # 77
+    _Keywords = [
+        "abstract", "arguments", "boolean", "break", "byte",
+        "case", "catch", "char", "class", "const",
+        "continue", "debugger", "default", "delete", "do",
+        "double", "else", "enum", "eval", "export",
+        "extends", "false", "final", "finally", "float",
+        "for", "function", "goto", "if", "implements",
+        "import", "in", "instanceof", "int", "interface",
+        "let", "long", "native", "new", "null",
+        "package", "private", "protected", "public", "return",
+        "short", "static", "super", "switch", "synchronized",
+        "this", "throw", "throws", "transient", "true",
+        "try", "typeof", "var", "void", "volatile",
+        "while", "with", "yield", "Array", "Date",
+        "eval", "function", "hasOwnProperty", "Infinity", "isFinite",
+        "isNaN", "isPrototypeOf", "length", "Math", "NaN",
+        "name", "Number", "Object", "prototype", "String",
+        "toString", "undefined", "valueOf", "getClass", "java",
+        "JavaArray", "javaClass", "JavaObject", "JavaPackage"
+    ]
 
     def __init__(self):
         self._No_Formatted_string_List = self._APIs + self._Operators + self._Keywords

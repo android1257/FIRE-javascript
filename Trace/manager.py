@@ -77,13 +77,13 @@ class FunctionManager:
 
         self.script_dir = f"{TRACE_DIR}/scripts/"
 
-        self.code_file = f"{self.base_dir}/{self.unique_name}.c"
+        self.code_file = f"{self.base_dir}/{self.unique_name}.js"
 
         self.cpg_file = f"{self.base_dir}/{self.unique_name}.cpg.bin"
 
         self.script_file = f"{self.script_dir}/taint2json.sc"
 
-        self.ast_parser_file = f"{self.script_dir}/cppparser.so"
+        self.ast_parser_file = f"{self.script_dir}/javascriptparser.so"
 
         self.taint_file = f"{self.base_dir}/{self.unique_name}.taint.json"
 
@@ -162,7 +162,7 @@ class FunctionManager:
 
     def __generate_cpg_file(self):
         logger.debug("generating cpg file...")
-        cmd = f"{os.path.join(joern_path, 'joern-parse')} {self.code_file} --max-num-def 10000000 --language c --output {self.cpg_file}"
+        cmd = f"{os.path.join(joern_path, 'joern-parse')} {self.base_dir} --max-num-def 10000000 --language javascript --output {self.cpg_file}"
         logger.debug(cmd)
 
         with FileLockManager(self.cpg_file_lock):
@@ -191,14 +191,20 @@ class FunctionManager:
         with FileLockManager(self.cpg_file_lock):
             p = subprocess.Popen(
                 cmd,
-                stderr=subprocess.STDOUT,
+                stderr=subprocess.PIPE,
                 stdout=subprocess.PIPE,
                 shell=True,
                 close_fds=True,
                 start_new_session=True,
             )
             try:
-                p.communicate(timeout=timeout)
+                stdout, stderr = p.communicate(timeout=timeout)
+                # Log both stdout and stderr
+                if stdout:
+                    logger.debug(f"Command output (stdout):\n{stdout.decode('utf-8')}")
+                if stderr:
+                    logger.error(f"Command error (stderr):\n{stderr.decode('utf-8')}")
+                # p.communicate(timeout=timeout)
                 # p.wait()
             except subprocess.TimeoutExpired:
                 p.kill()
@@ -248,8 +254,8 @@ class FunctionManager:
     def ast_parser(self):
         if not self._ast_parser:
             self._ast_parser = Parser()
-            CPP_LANGUAGE = Language(self.ast_parser_file, "cpp")
-            self._ast_parser.set_language(CPP_LANGUAGE)
+            JAVASCRIPT_LANGUAGE = Language(self.ast_parser_file, "javascript")
+            self._ast_parser.set_language(JAVASCRIPT_LANGUAGE)
         return self._ast_parser
 
     @property
@@ -353,6 +359,8 @@ class FunctionManager:
                         self.taint_line_flows,
                     )
                 )
+            logger.debug(f"taint_line_flows {self.taint_line_flows}")
+            logger.debug(f"cfg_node_dict {self.cfg_node_dict}")
         return self._taint_code_flows
 
     def embeddings_mean(self, code_embeddings):
@@ -444,6 +452,7 @@ class FunctionManager:
         return self.tcf_codebert_embeddings
 
     def clear_intermediate_file(self):
+        # pass
         if os.path.exists(self.base_dir):
             import shutil
 
@@ -620,6 +629,7 @@ class FunctionPairManager:
         get taint flow
         get diff taint flow
         """
+        logger.debug("get_diff_tcfs")
         if not self.vuln_fm.taint_code_flows or not self.patch_fm.taint_code_flows:
             return list(), list()
 
@@ -642,7 +652,7 @@ class FunctionPairManager:
         )
         if not os.path.exists(f"{self.patch_fm.base_dir}/{embed_type}"):
             os.makedirs(f"{self.patch_fm.base_dir}/{embed_type}", exist_ok=True)
-
+        logger.debug("get_diff_embeddings")
         vuln_tcfs, patch_tcfs = [], []
         if not os.path.exists(self.vuln_fm.npy_diff_file) or not os.path.exists(
             self.patch_fm.npy_diff_file
